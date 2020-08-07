@@ -4,7 +4,8 @@ import axios from 'axios';
 const ACTIONS = {
 	MAKE_REQUEST: 'make-request',
 	GET_DATA: 'get-data',
-	ERROR: 'error'
+	ERROR: 'error',
+	UPDATE_HAS_NEXT_PAGE: 'update-has-next-page'
 }
 
 const BASE_URL = 'https://cors-anywhere.herokuapp.com/https://jobs.github.com/positions.json';
@@ -18,6 +19,8 @@ const reducer = (state, action) => {
 			return { ...state, loading: false, jobs: action.payload.jobs }
 		case ACTIONS.ERROR:
 			return {...state, loading: false, error: action.payload.error, jobs: [] }
+		case ACTIONS.UPDATE_HAS_NEXT_PAGE:
+			return {...state, hasNextPage: action.payload.hasNextPage}
 		default:
 			return state
 	}
@@ -35,12 +38,12 @@ const useFetchJobs = (params, page) => {
 	// Whenever params or page updates, make changes
 	useEffect(() => {
 		// Cancel the old requests as the user types
-		const cancelToken = axios.CancelToken.source();
+		const cancelToken1 = axios.CancelToken.source();
 
 		dispatch({ type: ACTIONS.MAKE_REQUEST });
 
 		axios.get(BASE_URL, {
-				cancelToken: cancelToken.token,
+				cancelToken: cancelToken1.token,
 				params: { markdown: true, page: page, ...params }
 			})
 			.then(res => {
@@ -52,7 +55,31 @@ const useFetchJobs = (params, page) => {
 				})
 			})
 			.catch(e => {
-				if(axios.isCacle(e)) return
+				if(axios.isCancel(e)) return
+				dispatch({
+					type: ACTIONS.ERROR,
+					payload: {
+						error: e
+					}
+				})
+			})
+
+			// Check next page
+			const cancelToken2 = axios.CancelToken.source();
+			axios.get(BASE_URL, {
+				cancelToken: cancelToken2.token,
+				params: { markdown: true, page: page+1, ...params }
+			})
+			.then(res => {
+				dispatch({
+					type: ACTIONS.UPDATE_HAS_NEXT_PAGE,
+					payload: {
+						hasNextPage: res.data.length !== 0
+					}
+				})
+			})
+			.catch(e => {
+				if(axios.isCancel(e)) return
 				dispatch({
 					type: ACTIONS.ERROR,
 					payload: {
@@ -62,7 +89,8 @@ const useFetchJobs = (params, page) => {
 			})
 
 			return () => {
-				cancelToken.cancel()
+				cancelToken1.cancel()
+				cancelToken2.cancel()
 			}
 	}, [params, page])
 
